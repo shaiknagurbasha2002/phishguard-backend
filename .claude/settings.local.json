@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(del \"D:\\\\IDES\\\\sts wrkspace\\\\phishguard\\\\src\\\\main\\\\java\\\\com\\\\phishguard\\\\controller\\\\UserController.java\")",
+      "Bash(grep -E \"\\\\.java$\")"
+    ]
+  }
+}
