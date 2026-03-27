@@ -22,7 +22,7 @@ public class Training {
     private String fileUrl;
 
     @OneToMany(mappedBy = "training", cascade = CascadeType.ALL,
-               fetch = FetchType.EAGER, orphanRemoval = true)
+               fetch = FetchType.LAZY, orphanRemoval = true)
     @OrderBy("uploadedAt DESC")
     private List<TrainingAttachment> attachments = new ArrayList<>();
 

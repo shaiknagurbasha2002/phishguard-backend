@@ -67,6 +67,7 @@ public class NotificationController {
     public Notification create(@RequestBody Notification notification) {
         if (notification.getUserId() == null) {
             return notificationService.createGlobal(
+                notification.getTitle(),
                 notification.getMessage(),
                 notification.getType(),
                 notification.getLink()
@@ -74,6 +75,7 @@ public class NotificationController {
         }
         return notificationService.createForUser(
             notification.getUserId(),
+            notification.getTitle(),
             notification.getMessage(),
             notification.getType(),
             notification.getLink()

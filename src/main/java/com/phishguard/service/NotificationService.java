@@ -17,19 +17,19 @@ public class NotificationService {
     // ── Create helpers ───────────────────────────────────────────────────────
 
     /**
-     * Create a GLOBAL notification (visible to all users).
-     * Used when admin publishes an article or adds a training module.
+     * Create a GLOBAL notification with title (visible to all users).
+     * Used when admin publishes a training module or announcement.
      */
-    public Notification createGlobal(String message, String type, String link) {
-        Notification n = new Notification(null, message, type, link);
+    public Notification createGlobal(String title, String message, String type, String link) {
+        Notification n = new Notification(null, title, message, type, link);
         return notificationRepository.save(n);
     }
 
     /**
      * Create a notification targeted to one specific user.
      */
-    public Notification createForUser(Long userId, String message, String type, String link) {
-        Notification n = new Notification(userId, message, type, link);
+    public Notification createForUser(Long userId, String title, String message, String type, String link) {
+        Notification n = new Notification(userId, title, message, type, link);
         return notificationRepository.save(n);
     }
 

@@ -1,11 +1,13 @@
 package com.phishguard.controller;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.phishguard.config.AdminGuard;
 import com.phishguard.model.KnowledgeArticle;
 import com.phishguard.repository.KnowledgeArticleRepository;
 import com.phishguard.service.NotificationService;
@@ -14,50 +16,69 @@ import com.phishguard.service.NotificationService;
 @RequestMapping("/api/knowledge")
 public class KnowledgeArticleController {
 
-    @Autowired
-    private KnowledgeArticleRepository knowledgeArticleRepository;
+    @Autowired private KnowledgeArticleRepository knowledgeArticleRepository;
+    @Autowired private NotificationService notificationService;
+    @Autowired private AdminGuard adminGuard;
 
-    @Autowired
-    private NotificationService notificationService;
-
+    // GET /api/knowledge — public
     @GetMapping
     public List<KnowledgeArticle> getAllArticles() {
         return knowledgeArticleRepository.findAll();
     }
 
+    // GET /api/knowledge/{id} — public
     @GetMapping("/{id}")
     public KnowledgeArticle getArticleById(@PathVariable Long id) {
         return knowledgeArticleRepository.findById(id).orElse(null);
     }
 
+    // POST /api/knowledge — ADMIN ONLY
     @PostMapping
-    public KnowledgeArticle createArticle(@RequestBody KnowledgeArticle article) {
+    public ResponseEntity<?> createArticle(
+            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
+            @RequestBody KnowledgeArticle article) {
+
+        if (!adminGuard.isAdmin(userIdHeader)) return adminGuard.forbidden();
+
         if (article.getPublishedAt() == null) {
             article.setPublishedAt(java.time.LocalDateTime.now());
         }
         KnowledgeArticle saved = knowledgeArticleRepository.save(article);
-
-        // Fire a global notification so all users see it in their bell
         try {
-            String msg = "New article published: " + saved.getTitle();
-            notificationService.createGlobal(msg, "article", "/dashboard/knowledge/" + saved.getId());
+            notificationService.createGlobal(
+                "New Article Published",
+                "New article published: " + saved.getTitle(),
+                "article",
+                "/dashboard/knowledge/" + saved.getId()
+            );
         } catch (Exception e) {
             System.err.println("Notification creation failed (non-fatal): " + e.getMessage());
         }
-
-        return saved;
+        return ResponseEntity.ok(saved);
     }
 
+    // DELETE /api/knowledge/{id} — ADMIN ONLY
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteArticle(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteArticle(
+            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
+            @PathVariable Long id) {
+
+        if (!adminGuard.isAdmin(userIdHeader)) return adminGuard.forbidden();
+
         if (!knowledgeArticleRepository.existsById(id)) return ResponseEntity.notFound().build();
         knowledgeArticleRepository.deleteById(id);
         return ResponseEntity.noContent().build();
     }
 
-    // PATCH /api/knowledge/{id}/file — attach a file URL to an article
+    // PATCH /api/knowledge/{id}/file — ADMIN ONLY
     @PatchMapping("/{id}/file")
-    public ResponseEntity<?> attachFile(@PathVariable Long id, @RequestBody java.util.Map<String, String> body) {
+    public ResponseEntity<?> attachFile(
+            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+
+        if (!adminGuard.isAdmin(userIdHeader)) return adminGuard.forbidden();
+
         return knowledgeArticleRepository.findById(id).map(a -> {
             a.setFileUrl(body.get("fileUrl"));
             return ResponseEntity.ok(knowledgeArticleRepository.save(a));

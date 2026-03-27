@@ -20,6 +20,9 @@ public class User {
 
     private int points;
 
+    // "ADMIN" or "USER"
+    private String role = "USER";
+
     public User() {
     }
 
@@ -61,5 +64,13 @@ public class User {
 
     public void setPoints(int points) {
         this.points = points;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
     }
 }
