@@ -34,49 +34,39 @@ public class HelloController {
 
     @PostMapping
     public ResponseEntity<?> createUser(@RequestBody User user) {
+        // Validate required fields
         if (user.getEmail() == null || user.getEmail().isBlank()) {
             return ResponseEntity.badRequest().body("{\"error\": \"Email is required\"}");
         }
-        // Check duplicate email
-        Optional<User> existing = userService.findByEmail(user.getEmail().trim());
+        if (user.getPassword() == null || user.getPassword().isBlank()) {
+            return ResponseEntity.badRequest().body("{\"error\": \"Password is required\"}");
+        }
+        // Prevent duplicate accounts
+        Optional<User> existing = userService.findByEmail(user.getEmail().trim().toLowerCase());
         if (existing.isPresent()) {
             return ResponseEntity.status(409).body("{\"error\": \"Email already registered\"}");
         }
-        user.setEmail(user.getEmail().trim());
+        user.setEmail(user.getEmail().trim().toLowerCase());
+        // createUser() hashes the password with BCrypt before saving
         User saved = userService.createUser(user);
         return ResponseEntity.status(201).body(saved);
     }
 
     @PostMapping("/login")
     public ResponseEntity<?> loginUser(@RequestBody User loginRequest) {
-        String inputEmail = loginRequest.getEmail() == null ? "" : loginRequest.getEmail().trim();
-        String inputPassword = loginRequest.getPassword() == null ? "" : loginRequest.getPassword().trim();
+        String inputEmail    = loginRequest.getEmail()    == null ? "" : loginRequest.getEmail().trim().toLowerCase();
+        String inputPassword = loginRequest.getPassword() == null ? "" : loginRequest.getPassword();
 
-        // Try exact match first, then lowercase
+        // Corporate rule: always look up by email, never reveal which field is wrong
         Optional<User> existingUser = userService.findByEmail(inputEmail);
-        if (existingUser.isEmpty()) {
-            existingUser = userService.findByEmail(inputEmail.toLowerCase());
+
+        // BCrypt verification: matches(plainText, hashedFromDB)
+        if (existingUser.isPresent() && userService.checkPassword(inputPassword, existingUser.get().getPassword())) {
+            return ResponseEntity.ok(existingUser.get());
         }
 
-        System.out.println("Input Email: " + inputEmail);
-        System.out.println("Input Password: " + inputPassword);
-
-        if (existingUser.isPresent()) {
-            User user = existingUser.get();
-
-            String dbEmail = user.getEmail() == null ? "" : user.getEmail().trim();
-            String dbPassword = user.getPassword() == null ? "" : user.getPassword().trim();
-
-            System.out.println("DB Email: " + dbEmail);
-            System.out.println("DB Password: " + dbPassword);
-
-            if (dbPassword.equals(inputPassword)) {
-                // ✅ Return the User object so frontend gets data.id
-                return ResponseEntity.ok(user);
-            }
-        }
-
-        return ResponseEntity.status(401).body("{\"error\": \"Invalid email or password\"}");
+        // Generic message — never say "email not found" or "wrong password"
+        return ResponseEntity.status(401).body("{\"error\": \"Invalid credentials\"}");
     }
 
     @PutMapping("/{id}")
