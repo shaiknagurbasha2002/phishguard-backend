@@ -14,6 +14,7 @@ import com.phishguard.repository.QuizRepository;
 
 @RestController
 @RequestMapping("/api/dashboard")
+@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:3000"})
 public class DashboardController {
 
     @Autowired

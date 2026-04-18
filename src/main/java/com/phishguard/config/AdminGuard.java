@@ -1,43 +1,25 @@
 package com.phishguard.config;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
-import com.phishguard.repository.UserRepository;
-
 /**
- * Lightweight admin-role checker.
- *
- * Usage in a controller:
- *   if (!adminGuard.isAdmin(userIdHeader)) return adminGuard.forbidden();
- *
- * Frontend must send header:  X-User-Id: <userId>  on every admin request.
+ * Checks if the currently authenticated user has ROLE_ADMIN.
+ * Reads from Spring Security context (JWT already validated by JwtFilter).
+ * No need for X-User-Id header — role comes from the JWT token.
  */
 @Component
 public class AdminGuard {
 
-    @Autowired
-    private UserRepository userRepository;
-
-    /**
-     * Returns true only if the userId in the header belongs to a user whose role is "ADMIN".
-     */
-    public boolean isAdmin(String userIdHeader) {
-        if (userIdHeader == null || userIdHeader.isBlank()) return false;
-        try {
-            Long userId = Long.parseLong(userIdHeader.trim());
-            return userRepository.findById(userId)
-                .map(u -> "ADMIN".equalsIgnoreCase(u.getRole()))
-                .orElse(false);
-        } catch (NumberFormatException e) {
-            return false;
-        }
+    public boolean isAdmin() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) return false;
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
     }
 
-    /**
-     * Standard 403 response returned when admin check fails.
-     */
     public <T> ResponseEntity<T> forbidden() {
         return ResponseEntity.status(403).build();
     }

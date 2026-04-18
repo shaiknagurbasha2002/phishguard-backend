@@ -20,8 +20,17 @@ public class User {
 
     private int points;
 
-    // "ADMIN" or "USER"
-    private String role = "USER";
+    @Column(nullable = false)
+    private String role = "ROLE_USER"; // default role
+    
+    @Column(nullable = false)
+    private boolean emailVerified = false;
+
+    private String verificationToken;
+
+    private String resetToken;
+
+    private java.time.LocalDateTime resetTokenExpiry;
 
     public User() {
     }
@@ -73,4 +82,18 @@ public class User {
     public void setRole(String role) {
         this.role = role;
     }
+
+    public String getResetToken() { return resetToken; }
+    public void setResetToken(String resetToken) { this.resetToken = resetToken; }
+
+    public java.time.LocalDateTime getResetTokenExpiry() { return resetTokenExpiry; }
+    public void setResetTokenExpiry(java.time.LocalDateTime resetTokenExpiry) { this.resetTokenExpiry = resetTokenExpiry; }
+    
+    public boolean isEmailVerified() { return emailVerified; }
+    public void setEmailVerified(boolean emailVerified) { this.emailVerified = emailVerified; }
+
+    public String getVerificationToken() { return verificationToken; }
+    public void setVerificationToken(String verificationToken) { this.verificationToken = verificationToken; }
 }
+
+

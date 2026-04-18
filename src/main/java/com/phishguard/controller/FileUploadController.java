@@ -14,6 +14,7 @@ import com.phishguard.config.AdminGuard;
 
 @RestController
 @RequestMapping("/api/files")
+@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:3000"})
 public class FileUploadController {
 
     @Value("${app.upload.dir:uploads}")
@@ -39,10 +40,9 @@ public class FileUploadController {
     // POST /api/files/upload — ADMIN ONLY
     @PostMapping("/upload")
     public ResponseEntity<Map<String, String>> uploadFile(
-            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
             @RequestParam("file") MultipartFile file) {
 
-        if (!adminGuard.isAdmin(userIdHeader)) {
+        if (!adminGuard.isAdmin()) {
             return ResponseEntity.status(403).body(Map.of("error", "Admin access required"));
         }
 

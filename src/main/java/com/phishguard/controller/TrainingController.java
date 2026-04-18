@@ -1,221 +1,158 @@
 package com.phishguard.controller;
 
-import java.time.LocalDateTime;
+import com.phishguard.config.AdminGuard;
+import com.phishguard.model.Training;
+import com.phishguard.repository.TrainingAttachmentRepository;
+import com.phishguard.repository.TrainingRepository;
+import com.phishguard.service.NotificationService;
+import jakarta.transaction.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.nio.file.*;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.*;
-
-import com.phishguard.config.AdminGuard;
-import com.phishguard.dto.AttachmentResponse;
-import com.phishguard.dto.TrainingResponse;
-import com.phishguard.model.Training;
-import com.phishguard.model.TrainingAttachment;
-import com.phishguard.repository.TrainingRepository;
-import com.phishguard.repository.TrainingAttachmentRepository;
-import com.phishguard.service.FileStorageService;
-import com.phishguard.service.NotificationService;
 
 @RestController
-@RequestMapping("/api/training")
+@RequestMapping("/api/trainings")
+@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:3000"})
 public class TrainingController {
 
-    @Autowired private TrainingRepository trainingRepository;
-    @Autowired private TrainingAttachmentRepository attachmentRepository;
-    @Autowired private NotificationService notificationService;
-    @Autowired private FileStorageService fileStorageService;
-    @Autowired private AdminGuard adminGuard;
+    @Autowired
+    private TrainingRepository trainingRepository;
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // GET /api/training — list all modules with their attachments (public)
-    // Returns List<TrainingResponse> — safe DTOs, no Hibernate proxies
-    // ─────────────────────────────────────────────────────────────────────────
+    @Autowired
+    private NotificationService notificationService;
+
+    @Autowired
+    private TrainingAttachmentRepository attachmentRepository;
+
+    @Autowired
+    private AdminGuard adminGuard;
+
+    @Value("${app.base-url}")
+    private String baseUrl;
+
+    private static final String UPLOAD_DIR = "uploads/trainings/";
+
     @GetMapping
-    @Transactional(readOnly = true)
-    public List<TrainingResponse> getAllTraining() {
-        return trainingRepository.findAll()
-                .stream()
-                .map(TrainingResponse::from)
-                .collect(Collectors.toList());
+    public List<Training> getAllTrainings() {
+        return trainingRepository.findAll();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // POST /api/training — add new module (ADMIN ONLY)
-    // ─────────────────────────────────────────────────────────────────────────
     @PostMapping
-    @Transactional
-    public ResponseEntity<TrainingResponse> addTraining(
-            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
-            @RequestBody Training training) {
-
-        if (!adminGuard.isAdmin(userIdHeader)) return adminGuard.forbidden();
-
+    public ResponseEntity<?> createTraining(@RequestBody Training training) {
+        if (!adminGuard.isAdmin()) return adminGuard.forbidden();
         Training saved = trainingRepository.save(training);
+        notificationService.notifyAllUsers(
+            "New Training Module Available!",
+            "New Training: " + saved.getTitle(),
+            "A new training module <b>" + saved.getTitle() +
+            "</b> has been added. Login to PhishGuard to start learning!"
+        );
+        return ResponseEntity.ok(saved);
+    }
+
+    @PostMapping("/upload")
+    public ResponseEntity<?> uploadTraining(
+            @RequestParam("title") String title,
+            @RequestParam("description") String description,
+            @RequestParam(value = "content", required = false) String content,
+            @RequestParam(value = "file", required = false) MultipartFile file) {
+
+        if (!adminGuard.isAdmin()) return adminGuard.forbidden();
         try {
-            notificationService.createGlobal(
-                "New Training Module",
-                "New training module added: " + saved.getTitle(),
-                "training",
-                "/dashboard/training"
+            Training training = new Training();
+            training.setTitle(title);
+            training.setDescription(description);
+            if (content != null) training.setContent(content);
+
+            if (file != null && !file.isEmpty()) {
+                Path uploadPath = Paths.get(UPLOAD_DIR);
+                if (!Files.exists(uploadPath)) {
+                    Files.createDirectories(uploadPath);
+                }
+                String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
+                Path filePath = uploadPath.resolve(fileName);
+                Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+                training.setFileName(fileName);
+                training.setFileUrl(baseUrl + "/api/trainings/files/" + fileName);
+            }
+
+            Training saved = trainingRepository.save(training);
+
+            notificationService.notifyAllUsers(
+                "New Training Module Available!",
+                "New Training: " + saved.getTitle(),
+                "A new training module <b>" + saved.getTitle() +
+                "</b> has been added. Login to PhishGuard to start learning!"
             );
-        } catch (Exception e) {
-            System.err.println("Notification creation failed (non-fatal): " + e.getMessage());
+
+            return ResponseEntity.ok(saved);
+
+        } catch (IOException e) {
+            return ResponseEntity.status(500)
+                .body(Map.of("message", "File upload failed: " + e.getMessage()));
         }
-        return ResponseEntity.ok(TrainingResponse.from(saved));
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // POST /api/training/{id}/attachments — add one attachment (ADMIN ONLY)
-    // Returns the updated TrainingResponse so the frontend refreshes its list
-    // ─────────────────────────────────────────────────────────────────────────
-    @PostMapping("/{id}/attachments")
-    @Transactional
-    public ResponseEntity<TrainingResponse> addAttachment(
-            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
-            @PathVariable Long id,
-            @RequestBody Map<String, String> body) {
-
-        if (!adminGuard.isAdmin(userIdHeader)) return adminGuard.forbidden();
-
-        Optional<Training> trainingOpt = trainingRepository.findById(id);
-        if (trainingOpt.isEmpty()) return ResponseEntity.notFound().build();
-
-        TrainingAttachment att = new TrainingAttachment();
-        att.setTraining(trainingOpt.get());
-        att.setFileName(body.getOrDefault("fileName", "file"));
-        att.setFileUrl(body.get("fileUrl"));
-        String sizeStr = body.get("fileSize");
-        if (sizeStr != null && !sizeStr.isEmpty()) {
-            try { att.setFileSize(Long.parseLong(sizeStr)); }
-            catch (NumberFormatException ignored) {}
-        }
-        att.setUploadedAt(LocalDateTime.now());
-        attachmentRepository.save(att);
-
-        // Re-fetch so the returned Training includes the newly added attachment
-        Training updated = trainingRepository.findById(id).orElse(trainingOpt.get());
-        return ResponseEntity.ok(TrainingResponse.from(updated));
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // GET /api/training/{id}/attachments — list attachments for one module (public)
-    // Returns List<AttachmentResponse> — no Training back-reference
-    // ─────────────────────────────────────────────────────────────────────────
-    @GetMapping("/{id}/attachments")
-    @Transactional(readOnly = true)
-    public ResponseEntity<List<AttachmentResponse>> getAttachments(@PathVariable Long id) {
-        if (!trainingRepository.existsById(id)) return ResponseEntity.notFound().build();
-        List<AttachmentResponse> list = attachmentRepository
-                .findByTrainingIdOrderByUploadedAtDesc(id)
-                .stream()
-                .map(AttachmentResponse::from)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(list);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // DELETE /api/training/{id}/attachments/{attachmentId} (ADMIN ONLY)
-    // Checks ownership via single DB query — never loads the Training entity.
-    // DB record removed first, then physical file deleted from disk.
-    // ─────────────────────────────────────────────────────────────────────────
-    @DeleteMapping("/{id}/attachments/{attachmentId}")
-    @Transactional
-    public ResponseEntity<Void> deleteAttachment(
-            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
-            @PathVariable Long id,
-            @PathVariable Long attachmentId) {
-
-        if (!adminGuard.isAdmin(userIdHeader)) return adminGuard.forbidden();
-
-        Optional<TrainingAttachment> opt =
-                attachmentRepository.findByIdAndTraining_Id(attachmentId, id);
-        if (opt.isEmpty()) return ResponseEntity.notFound().<Void>build();
-
-        String fileUrl = opt.get().getFileUrl();
-
-        // Use JPQL bulk-delete by ID — avoids Spring Data's findById+remove cycle which
-        // triggers Hibernate orphanRemoval cascade on the parent Training, causing a DB hang.
-        attachmentRepository.deleteByAttachmentId(attachmentId); // DB first
-        fileStorageService.deleteByUrl(fileUrl);                  // disk after
-
-        return ResponseEntity.noContent().<Void>build();
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // DELETE /api/training/{id} — delete module + all attachments (ADMIN ONLY)
-    // Uses JPQL bulk-delete for attachments — no Hibernate cascade confusion.
-    // Physical files deleted AFTER DB operations complete.
-    // ─────────────────────────────────────────────────────────────────────────
-    @DeleteMapping("/{id}")
-    @Transactional
-    public ResponseEntity<Void> deleteTraining(
-            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
-            @PathVariable Long id) {
-
-        if (!adminGuard.isAdmin(userIdHeader)) return adminGuard.forbidden();
-
-        if (!trainingRepository.existsById(id)) return ResponseEntity.notFound().<Void>build();
-
-        // Step 1: Collect file URLs before any DB changes
-        List<String> fileUrls = attachmentRepository
-                .findByTrainingIdOrderByUploadedAtDesc(id)
-                .stream()
-                .map(TrainingAttachment::getFileUrl)
-                .filter(url -> url != null && !url.isBlank())
-                .collect(Collectors.toList());
-
-        // Step 2: Bulk-delete attachment rows (JPQL, clears 1st-level cache)
-        attachmentRepository.deleteAllByTrainingId(id);
-
-        // Step 3: Delete training row (children already gone — no cascade confusion)
-        trainingRepository.deleteById(id);
-
-        // Step 4: Delete physical files after DB success
-        fileUrls.forEach(fileStorageService::deleteByUrl);
-
-        return ResponseEntity.noContent().<Void>build();
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // PATCH /api/training/{id}/file — legacy single-file (ADMIN ONLY)
-    // ─────────────────────────────────────────────────────────────────────────
-    @PatchMapping("/{id}/file")
-    @Transactional
-    public ResponseEntity<TrainingResponse> attachFile(
-            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
-            @PathVariable Long id,
-            @RequestBody Map<String, String> body) {
-
-        if (!adminGuard.isAdmin(userIdHeader)) return adminGuard.forbidden();
-
-        Optional<Training> opt = trainingRepository.findById(id);
-        if (opt.isEmpty()) return ResponseEntity.notFound().build();
-        opt.get().setFileUrl(body.get("fileUrl"));
-        Training saved = trainingRepository.save(opt.get());
-        return ResponseEntity.ok(TrainingResponse.from(saved));
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // PUT /api/training/{id}/progress — update progress (any user)
-    // ─────────────────────────────────────────────────────────────────────────
     @PutMapping("/{id}/progress")
+    public ResponseEntity<?> updateProgress(@PathVariable Long id,
+                                            @RequestBody Map<String, Object> body) {
+        return trainingRepository.findById(id).map(training -> {
+            Object progressVal = body.get("progress");
+            if (progressVal != null) {
+                int progress = Math.min(100, Math.max(0, ((Number) progressVal).intValue()));
+                training.setProgress(progress);
+                trainingRepository.save(training);
+            }
+            return ResponseEntity.ok(training);
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
     @Transactional
-    public ResponseEntity<TrainingResponse> updateProgress(
-            @PathVariable Long id,
-            @RequestBody Map<String, Integer> body) {
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteTraining(@PathVariable Long id) {
+        if (!adminGuard.isAdmin()) return adminGuard.forbidden();
+        if (trainingRepository.existsById(id)) {
+            // Delete attachments first to avoid FK constraint violation
+            attachmentRepository.deleteAllByTrainingId(id);
+            trainingRepository.deleteById(id);
+            return ResponseEntity.ok(Map.of("message", "Training deleted successfully"));
+        }
+        return ResponseEntity.notFound().build();
+    }
 
-        Optional<Training> optional = trainingRepository.findById(id);
-        if (optional.isEmpty()) return ResponseEntity.notFound().build();
+    // Public endpoint — no auth needed — browser can open directly
+    @GetMapping("/files/{fileName:.+}")
+    public ResponseEntity<Resource> downloadFile(@PathVariable String fileName) {
+        try {
+            Path filePath = Paths.get(UPLOAD_DIR).resolve(fileName).normalize();
+            Resource resource = new FileSystemResource(filePath);
 
-        Training training = optional.get();
-        int progress = Math.min(100, Math.max(0, body.getOrDefault("progress", 0)));
-        training.setProgress(progress);
-        trainingRepository.save(training);
-        return ResponseEntity.ok(TrainingResponse.from(training));
+            if (!resource.exists() || !resource.isReadable()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            String contentType = Files.probeContentType(filePath);
+            if (contentType == null) contentType = "application/octet-stream";
+
+            return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                    "inline; filename=\"" + resource.getFilename() + "\"")
+                .body(resource);
+
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }

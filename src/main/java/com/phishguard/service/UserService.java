@@ -1,7 +1,9 @@
 package com.phishguard.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -16,7 +18,6 @@ public class UserService {
     @Autowired
     private UserRepository userRepository;
 
-    // Spring injects the BCryptPasswordEncoder we defined in SecurityConfig
     @Autowired
     private PasswordEncoder passwordEncoder;
 
@@ -24,15 +25,12 @@ public class UserService {
         return userRepository.findAll();
     }
 
-    // Called on REGISTER — hash the password before saving
     public User createUser(User user) {
-        // Corporate standard: NEVER store plain text passwords
         String hashed = passwordEncoder.encode(user.getPassword());
         user.setPassword(hashed);
         return userRepository.save(user);
     }
 
-    // Called on LOGIN — verify password against stored hash
     public boolean checkPassword(String rawPassword, String hashedPassword) {
         return passwordEncoder.matches(rawPassword, hashedPassword);
     }
@@ -40,24 +38,62 @@ public class UserService {
     public Optional<User> getUserById(Long id) {
         return userRepository.findById(id);
     }
+
     public Optional<User> findByEmail(String email) {
         return userRepository.findByEmail(email);
     }
 
+    public Optional<User> findByVerificationToken(String token) {
+        return userRepository.findByVerificationToken(token);
+    }
+
+    public User saveUser(User user) {
+        return userRepository.save(user);
+    }
+
+    // Password Reset
+    public String generateResetToken(String email) {
+        Optional<User> userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty()) return null;
+
+        User user = userOpt.get();
+        String token = UUID.randomUUID().toString();
+        user.setResetToken(token);
+        user.setResetTokenExpiry(LocalDateTime.now().plusMinutes(15));
+        userRepository.save(user);
+        return token;
+    }
+
+    public boolean resetPassword(String token, String newPassword) {
+        Optional<User> userOpt = userRepository.findByResetToken(token);
+        if (userOpt.isEmpty()) return false;
+
+        User user = userOpt.get();
+
+        // Check if token is expired
+        if (user.getResetTokenExpiry().isBefore(LocalDateTime.now())) {
+            return false;
+        }
+
+        // Set new password and clear token
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setResetToken(null);
+        user.setResetTokenExpiry(null);
+        userRepository.save(user);
+        return true;
+    }
+
     public User updateUser(Long id, User userDetails) {
         Optional<User> existingUser = userRepository.findById(id);
-
         if (existingUser.isPresent()) {
             User user = existingUser.get();
             user.setName(userDetails.getName());
             user.setEmail(userDetails.getEmail());
-            // Only update password if a new one is provided — hash it before saving
             if (userDetails.getPassword() != null && !userDetails.getPassword().isBlank()) {
                 user.setPassword(passwordEncoder.encode(userDetails.getPassword()));
             }
             return userRepository.save(user);
         }
-
         return null;
     }
 

@@ -7,32 +7,44 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.phishguard.config.AdminGuard;
 import com.phishguard.model.Notification;
 import com.phishguard.service.NotificationService;
 
 @RestController
 @RequestMapping("/api/notifications")
+@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:3000"})
 public class NotificationController {
 
     @Autowired
     private NotificationService notificationService;
 
+    @Autowired
+    private AdminGuard adminGuard;
+
     /**
      * GET /api/notifications/user/{userId}
-     * Returns all notifications for a user (targeted + global), newest first.
+     * Admin: only targeted notifications (not global user ones).
+     * Regular user: targeted + global, newest first.
      */
     @GetMapping("/user/{userId}")
     public List<Notification> getForUser(@PathVariable Long userId) {
+        if (adminGuard.isAdmin()) {
+            return notificationService.getTargetedForUser(userId);
+        }
         return notificationService.getForUser(userId);
     }
 
     /**
      * GET /api/notifications/user/{userId}/unread-count
-     * Returns just the number of unread notifications (for the bell badge).
+     * Admin: count only targeted. Regular user: count targeted + global.
      */
     @GetMapping("/user/{userId}/unread-count")
     public Map<String, Long> getUnreadCount(@PathVariable Long userId) {
-        return Map.of("count", notificationService.getUnreadCount(userId));
+        long count = adminGuard.isAdmin()
+            ? notificationService.getUnreadCountTargeted(userId)
+            : notificationService.getUnreadCount(userId);
+        return Map.of("count", count);
     }
 
     /**
@@ -59,26 +71,41 @@ public class NotificationController {
     }
 
     /**
+     * DELETE /api/notifications/user/{userId}/read
+     * Deletes all read notifications for a user — called after viewing so they disappear.
+     */
+    @DeleteMapping("/user/{userId}/read")
+    public ResponseEntity<Void> deleteRead(@PathVariable Long userId) {
+        notificationService.deleteReadForUser(userId);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
      * POST /api/notifications
      * Manually create a notification (admin use or testing).
      * Body: { "userId": null|number, "message": "...", "type": "alert", "link": "..." }
      */
     @PostMapping
-    public Notification create(@RequestBody Notification notification) {
+    public ResponseEntity<?> create(@RequestBody Notification notification) {
+        if (!adminGuard.isAdmin()) return adminGuard.forbidden();
+        Notification result;
         if (notification.getUserId() == null) {
-            return notificationService.createGlobal(
+            result = notificationService.createGlobal(
+                notification.getTitle(),
+                notification.getMessage(),
+                notification.getType(),
+                notification.getLink()
+            );
+        } else {
+            result = notificationService.createForUser(
+                notification.getUserId(),
                 notification.getTitle(),
                 notification.getMessage(),
                 notification.getType(),
                 notification.getLink()
             );
         }
-        return notificationService.createForUser(
-            notification.getUserId(),
-            notification.getTitle(),
-            notification.getMessage(),
-            notification.getType(),
-            notification.getLink()
-        );
+        return ResponseEntity.ok(result);
     }
+
 }

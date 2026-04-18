@@ -16,10 +16,14 @@ public class Training {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Column(columnDefinition = "TEXT")
+    private String content;
+
     private int progress;
 
-    // Legacy single-file field — kept for backward compatibility
     private String fileUrl;
+
+    private String fileName;
 
     @OneToMany(mappedBy = "training", cascade = CascadeType.ALL,
                fetch = FetchType.LAZY, orphanRemoval = true)
@@ -36,11 +40,17 @@ public class Training {
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
 
+    public String getContent() { return content; }
+    public void setContent(String content) { this.content = content; }
+
     public int getProgress() { return progress; }
     public void setProgress(int progress) { this.progress = progress; }
 
     public String getFileUrl() { return fileUrl; }
     public void setFileUrl(String fileUrl) { this.fileUrl = fileUrl; }
+
+    public String getFileName() { return fileName; }
+    public void setFileName(String fileName) { this.fileName = fileName; }
 
     public List<TrainingAttachment> getAttachments() { return attachments; }
     public void setAttachments(List<TrainingAttachment> attachments) { this.attachments = attachments; }

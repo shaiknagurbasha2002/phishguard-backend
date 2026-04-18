@@ -1,20 +1,26 @@
 package com.phishguard.controller;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.phishguard.config.AdminGuard;
 import com.phishguard.model.Simulation;
 import com.phishguard.repository.SimulationRepository;
 
 @RestController
 @RequestMapping("/api/simulations")
+@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:3000"})
 public class SimulationController {
 
     @Autowired
     private SimulationRepository simulationRepository;
+
+    @Autowired
+    private AdminGuard adminGuard;
 
     @GetMapping
     public List<Simulation> getAllSimulations() {
@@ -22,22 +28,26 @@ public class SimulationController {
     }
 
     @GetMapping("/{id}")
-    public Simulation getSimulationById(@PathVariable Long id) {
-        return simulationRepository.findById(id).orElse(null);
+    public ResponseEntity<Simulation> getSimulationById(@PathVariable Long id) {
+        return simulationRepository.findById(id)
+            .map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public Simulation createSimulation(@RequestBody Simulation simulation) {
+    public ResponseEntity<?> createSimulation(@RequestBody Simulation simulation) {
+        if (!adminGuard.isAdmin()) return adminGuard.forbidden();
         if (simulation.getCreatedAt() == null) {
             simulation.setCreatedAt(java.time.LocalDateTime.now());
         }
-        return simulationRepository.save(simulation);
+        return ResponseEntity.ok(simulationRepository.save(simulation));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteSimulation(@PathVariable Long id) {
+    public ResponseEntity<?> deleteSimulation(@PathVariable Long id) {
+        if (!adminGuard.isAdmin()) return adminGuard.forbidden();
         if (!simulationRepository.existsById(id)) return ResponseEntity.notFound().build();
         simulationRepository.deleteById(id);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(Map.of("message", "Simulation deleted"));
     }
 }

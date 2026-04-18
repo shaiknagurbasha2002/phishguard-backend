@@ -9,13 +9,15 @@ import org.springframework.web.bind.annotation.*;
 
 import com.phishguard.model.Incident;
 import com.phishguard.repository.IncidentRepository;
+import com.phishguard.service.NotificationService;
 
 @RestController
 @RequestMapping("/api/incidents")
+@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:3000"})
 public class IncidentController {
 
-    @Autowired
-    private IncidentRepository incidentRepository;
+    @Autowired private IncidentRepository incidentRepository;
+    @Autowired private NotificationService notificationService;
 
     @GetMapping
     public List<Incident> getAllIncidents() {
@@ -32,11 +34,19 @@ public class IncidentController {
         if (incident.getReportedAt() == null) {
             incident.setReportedAt(java.time.LocalDateTime.now());
         }
-        return incidentRepository.save(incident);
+        Incident saved = incidentRepository.save(incident);
+        notificationService.notifyAdmins(
+            "New Incident Reported",
+            "Incident: " + saved.getTitle(),
+            "alert",
+            "/dashboard/report"
+        );
+        return saved;
     }
 
     @PutMapping("/{id}/status")
-    public ResponseEntity<Incident> updateStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
+    public ResponseEntity<Incident> updateStatus(@PathVariable Long id,
+                                                  @RequestBody Map<String, String> body) {
         return incidentRepository.findById(id).map(incident -> {
             String newStatus = body.get("status");
             if (newStatus != null) incident.setStatus(newStatus);
@@ -45,9 +55,9 @@ public class IncidentController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteIncident(@PathVariable Long id) {
+    public ResponseEntity<?> deleteIncident(@PathVariable Long id) {
         if (!incidentRepository.existsById(id)) return ResponseEntity.notFound().build();
         incidentRepository.deleteById(id);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(Map.of("message", "Incident deleted"));
     }
 }
