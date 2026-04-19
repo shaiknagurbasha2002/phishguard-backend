@@ -7,6 +7,9 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,6 +33,9 @@ public class UserController {
 
     @Autowired
     private EmailService emailService;
+
+    @Value("${app.frontend-url:http://localhost:3000}")
+    private String frontendUrl;
 
     @GetMapping
     public List<User> getAllUsers() {
@@ -77,9 +83,11 @@ public class UserController {
     @GetMapping("/verify")
     public ResponseEntity<?> verifyEmail(@RequestParam String token) {
         Optional<User> userOpt = userService.findByVerificationToken(token);
+        HttpHeaders headers = new HttpHeaders();
+
         if (userOpt.isEmpty()) {
-            return ResponseEntity.badRequest()
-                .body(Map.of("message", "Invalid or expired verification link."));
+            headers.add("Location", frontendUrl + "/login?error=invalid-link");
+            return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
         }
 
         User user = userOpt.get();
@@ -87,7 +95,8 @@ public class UserController {
         user.setVerificationToken(null);
         userService.saveUser(user);
 
-        return ResponseEntity.ok(Map.of("message", "Email verified successfully! You can now login."));
+        headers.add("Location", frontendUrl + "/login?verified=true");
+        return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
     }
 
     @PostMapping("/login")
