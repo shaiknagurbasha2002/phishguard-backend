@@ -13,7 +13,6 @@ import com.phishguard.service.NotificationService;
 
 @RestController
 @RequestMapping("/api/notifications")
-@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:3000"})
 public class NotificationController {
 
     @Autowired

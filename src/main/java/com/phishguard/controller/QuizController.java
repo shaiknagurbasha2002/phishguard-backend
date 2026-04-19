@@ -21,7 +21,6 @@ import com.phishguard.service.NotificationService;
 import com.phishguard.service.QuizService;
 
 @RestController
-@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:3000"})
 public class QuizController {
 
     @Autowired private QuizRepository quizRepository;

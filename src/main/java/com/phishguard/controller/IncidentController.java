@@ -13,7 +13,6 @@ import com.phishguard.service.NotificationService;
 
 @RestController
 @RequestMapping("/api/incidents")
-@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:3000"})
 public class IncidentController {
 
     @Autowired private IncidentRepository incidentRepository;

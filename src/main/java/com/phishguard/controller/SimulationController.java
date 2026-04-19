@@ -13,7 +13,6 @@ import com.phishguard.repository.SimulationRepository;
 
 @RestController
 @RequestMapping("/api/simulations")
-@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:3000"})
 public class SimulationController {
 
     @Autowired
